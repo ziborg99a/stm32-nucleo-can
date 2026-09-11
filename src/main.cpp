@@ -41,6 +41,43 @@ static void MX_GPIO_Init(void)
     HAL_GPIO_Init(GPIOA, &gpioInit);
 }
 
+static void writeLittleEndian16(uint8_t* data, uint16_t value)
+{
+    data[0] = static_cast<uint8_t>(value & 0xFFu);
+    data[1] = static_cast<uint8_t>(value >> 8);
+}
+
+static void transmitBatteryTelemetry(CanBus& canBus, uint8_t counter)
+{
+    uint8_t payload[8] = {};
+    writeLittleEndian16(&payload[0], 1260u);
+    writeLittleEndian16(&payload[2], 45u);
+    writeLittleEndian16(&payload[4], 250u);
+    payload[6] = 87u;
+    payload[7] = counter;
+    canBus.transmit(0x180, payload, sizeof(payload));
+}
+
+static void transmitVehicleStatus(CanBus& canBus, uint8_t counter)
+{
+    uint8_t payload[8] = {};
+    writeLittleEndian16(&payload[0], 1850u);
+    writeLittleEndian16(&payload[2], 523u);
+    payload[4] = 0x01u;
+    payload[5] = 0x03u;
+    payload[6] = counter;
+    canBus.transmit(0x100, payload, sizeof(payload));
+}
+
+static void transmitControlCommand(CanBus& canBus, uint8_t counter)
+{
+    uint8_t payload[8] = {};
+    payload[0] = 0x01u;
+    writeLittleEndian16(&payload[1], 500u);
+    payload[3] = counter;
+    canBus.transmit(0x200, payload, sizeof(payload));
+}
+
 int main(void)
 {
     HAL_Init();
@@ -49,13 +86,18 @@ int main(void)
 
     CanBus canBus;
     canBus.start();
+    canBus.processConsole();
 
-    uint8_t txData[8] = {0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x80};
+    uint8_t counter = 0;
 
     while (true) {
         HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
         canBus.processRx();
-        canBus.transmit(0x123, txData, sizeof(txData));
+        canBus.processConsole();
+        transmitVehicleStatus(canBus, counter);
+        transmitBatteryTelemetry(canBus, counter);
+        transmitControlCommand(canBus, counter);
+        ++counter;
         HAL_Delay(100);
     }
 

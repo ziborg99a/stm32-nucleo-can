@@ -1,7 +1,9 @@
 #include "canbus.hpp"
 #include "can_frame.hpp"
 
+#include <cstdlib>
 #include <cstdio>
+#include <cstring>
 
 CanBus::CanBus() = default;
 
@@ -141,6 +143,87 @@ void CanBus::processRx()
     CanFrame frame{};
     while (receive(frame)) {
         printReceivedFrame(frame);
+    }
+}
+
+void CanBus::printConsole(const char* text)
+{
+    HAL_UART_Transmit(&huart2_, reinterpret_cast<uint8_t*>(const_cast<char*>(text)),
+                      static_cast<uint16_t>(std::strlen(text)), HAL_MAX_DELAY);
+}
+
+void CanBus::handleConsoleCommand()
+{
+    consoleLine_[consoleLength_] = '\0';
+    char* command = std::strtok(consoleLine_, " \t");
+    if (command == nullptr) {
+        return;
+    }
+
+    if (std::strcmp(command, "help") == 0) {
+        printConsole("Commands:\r\n  help\r\n  status\r\n  send <id> [bytes]\r\n");
+        return;
+    }
+
+    if (std::strcmp(command, "status") == 0) {
+        printConsole(initialized_ ? "CAN status: running\r\n" : "CAN status: stopped\r\n");
+        return;
+    }
+
+    if (std::strcmp(command, "send") == 0) {
+        char* idText = std::strtok(nullptr, " \t");
+        if (idText == nullptr) {
+            printConsole("Usage: send <id> [bytes]\r\n");
+            return;
+        }
+
+        const uint32_t id = std::strtoul(idText, nullptr, 16);
+        uint8_t payload[8] = {};
+        uint8_t length = 0;
+        while (length < sizeof(payload)) {
+            char* byteText = std::strtok(nullptr, " \t");
+            if (byteText == nullptr) {
+                break;
+            }
+            payload[length++] = static_cast<uint8_t>(std::strtoul(byteText, nullptr, 16));
+        }
+
+        printConsole(transmit(id, payload, length) ? "CAN frame sent\r\n"
+                                                    : "CAN frame rejected\r\n");
+        return;
+    }
+
+    printConsole("Unknown command. Type help.\r\n");
+}
+
+void CanBus::processConsole()
+{
+    if (!initialized_) {
+        return;
+    }
+
+    if (!consoleStarted_) {
+        printConsole("CAN console ready. Type help.\r\n> ");
+        consoleStarted_ = true;
+    }
+
+    uint8_t character = 0;
+    while (HAL_UART_Receive(&huart2_, &character, 1, 0) == HAL_OK) {
+        if (character == '\r' || character == '\n') {
+            if (consoleLength_ > 0u) {
+                handleConsoleCommand();
+                consoleLength_ = 0;
+            }
+            printConsole("> ");
+        } else if (character == '\b' || character == 0x7Fu) {
+            if (consoleLength_ > 0u) {
+                --consoleLength_;
+                printConsole("\b \b");
+            }
+        } else if (consoleLength_ < sizeof(consoleLine_) - 1u) {
+            consoleLine_[consoleLength_++] = static_cast<char>(character);
+            HAL_UART_Transmit(&huart2_, &character, 1, HAL_MAX_DELAY);
+        }
     }
 }
 
