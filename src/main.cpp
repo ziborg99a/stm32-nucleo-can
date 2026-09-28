@@ -17,7 +17,6 @@ static void SystemClock_Config(void)
     oscInit.PLL.PLLN = 180;
     oscInit.PLL.PLLP = RCC_PLLP_DIV2;
     oscInit.PLL.PLLQ = 7;
-    oscInit.PLL.PLLR = 2;
     HAL_RCC_OscConfig(&oscInit);
 
     clkInit.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK | RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
@@ -30,15 +29,14 @@ static void SystemClock_Config(void)
 
 static void MX_GPIO_Init(void)
 {
-    __HAL_RCC_GPIOA_CLK_ENABLE();
     __HAL_RCC_GPIOB_CLK_ENABLE();
 
     GPIO_InitTypeDef gpioInit = {};
-    gpioInit.Pin = GPIO_PIN_5;
+    gpioInit.Pin = GPIO_PIN_0;
     gpioInit.Mode = GPIO_MODE_OUTPUT_PP;
     gpioInit.Pull = GPIO_NOPULL;
     gpioInit.Speed = GPIO_SPEED_FREQ_LOW;
-    HAL_GPIO_Init(GPIOA, &gpioInit);
+    HAL_GPIO_Init(GPIOB, &gpioInit);
 }
 
 int main(void)
@@ -53,8 +51,9 @@ int main(void)
     uint8_t txData[8] = {0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x80};
 
     while (true) {
-        HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
-        canBus.processRx();
+        HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_0);
+        canBus.processRx(CanChannel::HighSpeed);
+        canBus.processRx(CanChannel::MediumSpeed);
         canBus.transmit(0x123, txData, sizeof(txData));
         HAL_Delay(100);
     }
